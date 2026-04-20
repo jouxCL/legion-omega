@@ -2,7 +2,7 @@ import os
 import json
 import logging
 import warnings
-warnings.filterwarnings("ignore", category=FutureWarning, module="google")
+warnings.filterwarnings("ignore", category=FutureWarning)
 import google.generativeai as genai
 from memory.memory_manager import MemoryManager
 

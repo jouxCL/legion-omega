@@ -236,9 +236,15 @@ async def _launch_project(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     async def notify(msg: str):
         try:
+            # Try Markdown first; fall back to plain text on parse errors
             await update.message.reply_text(msg, parse_mode="Markdown")
-        except Exception as e:
-            logger.warning(f"notify error: {e}")
+        except Exception:
+            try:
+                # Strip markdown symbols and send as plain text
+                plain = msg.replace("*", "").replace("_", "").replace("`", "").replace("[", "").replace("]", "")
+                await update.message.reply_text(plain)
+            except Exception as e2:
+                logger.warning(f"notify failed entirely: {e2}")
 
     _orchestrator.notify = notify
     _active_task = asyncio.create_task(

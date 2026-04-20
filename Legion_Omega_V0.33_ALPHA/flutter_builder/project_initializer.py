@@ -148,6 +148,11 @@ class ProjectInitializer:
         with open(pubspec_path, "r", encoding="utf-8") as f:
             content = f.read()
 
+        # Guard: skip if already patched (avoid duplicate keys)
+        if "flutter_bloc:" in content:
+            logger.info("pubspec.yaml already patched, skipping dependency injection")
+            return
+
         dep_block = "\n".join(BASE_DEPENDENCIES)
         content = content.replace(
             "dependencies:\n  flutter:\n    sdk: flutter",

@@ -25,6 +25,7 @@ def calculate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
 
 
 def can_afford(agent: str, estimated_input: int, estimated_output: int) -> bool:
+    from memory.memory_manager import MemoryManager  # lazy import to avoid circular dep
     memory = MemoryManager()
     remaining = memory.get_remaining_budget()
     model = AGENT_MODELS.get(agent, "gemini-2.0-flash")

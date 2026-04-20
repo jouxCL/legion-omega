@@ -1,9 +1,10 @@
 import os
+import re
 import json
 import asyncio
 import logging
 import warnings
-warnings.filterwarnings("ignore", category=FutureWarning, module="google")
+warnings.filterwarnings("ignore", category=FutureWarning)
 import google.generativeai as genai
 from datetime import datetime
 from typing import Optional, Callable
@@ -136,7 +137,7 @@ class OrchestratorAgent:
             await self.notify(summary)
 
     async def _call_gemini_plan(self, description: str, brand_assets: dict) -> dict:
-        """Ask Gemini 2.5 Pro to analyze the request and produce a structured plan."""
+        """Ask Gemini to produce a structured plan. Retries up to 3 times on bad JSON."""
         prompt = f"""Analiza esta solicitud de app Flutter y produce un plan estructurado.
 
 SOLICITUD DEL USUARIO:
@@ -145,48 +146,89 @@ SOLICITUD DEL USUARIO:
 ASSETS DE MARCA DISPONIBLES:
 {json.dumps(brand_assets, ensure_ascii=False)}
 
-Devuelve SOLO un JSON con esta estructura:
+Devuelve SOLO un JSON válido con esta estructura exacta (sin texto adicional):
 {{
   "app_name": "nombre_en_snake_case",
   "app_display_name": "Nombre Legible",
   "features": [
     {{
       "name": "feature_name",
-      "description": "qué hace este feature",
+      "description": "que hace este feature",
       "entities": ["NombreEntidad1"],
       "use_cases": ["GetItems", "CreateItem"],
       "screens": ["ListScreen", "DetailScreen"]
     }}
   ],
   "global_theme": {{
-    "primary_color": "#hex o descripción",
-    "style": "Material3 / descripción del estilo visual"
+    "primary_color": "#hex",
+    "style": "Material3"
   }},
   "navigation_routes": ["/home", "/detail/:id"],
   "brand_assets": {json.dumps(brand_assets, ensure_ascii=False)}
 }}
 
-IMPORTANTE: Divide el trabajo en features pequeños y manejables. Cada feature = un dominio de negocio.
+REGLAS: Responde SOLO con el JSON. Sin markdown. Sin texto antes o despues. Sin comillas especiales.
 """
-        import asyncio
-        response = await asyncio.to_thread(
-            self.model.generate_content,
-            prompt,
-            generation_config=genai.types.GenerationConfig(
-                max_output_tokens=4096,
-                temperature=0.3
-            )
-        )
-        usage = response.usage_metadata
-        self.memory.log_token_usage("orchestrator", usage.prompt_token_count, usage.candidates_token_count)
+        last_error = None
+        for attempt in range(1, 4):  # up to 3 retries
+            try:
+                response = await asyncio.to_thread(
+                    self.model.generate_content,
+                    prompt,
+                    generation_config=genai.types.GenerationConfig(
+                        max_output_tokens=4096,
+                        temperature=0.2
+                    )
+                )
+                usage = response.usage_metadata
+                self.memory.log_token_usage(
+                    "orchestrator",
+                    usage.prompt_token_count,
+                    usage.candidates_token_count
+                )
 
-        text = response.text.strip()
-        if text.startswith("```"):
-            text = text.split("```", 2)[1]
-            if text.startswith("json"):
-                text = text[4:]
-            text = text.rsplit("```", 1)[0].strip()
-        return json.loads(text)
+                text = response.text.strip()
+                # Strip markdown code fences if present
+                if "```" in text:
+                    text = text.split("```", 2)[1]
+                    if text.startswith("json"):
+                        text = text[4:]
+                    text = text.rsplit("```", 1)[0].strip()
+
+                # Find the JSON object in the response
+                start = text.find("{")
+                end   = text.rfind("}") + 1
+                if start >= 0 and end > start:
+                    text = text[start:end]
+
+                plan = json.loads(text)
+                logger.info(f"[PLAN] Parsed successfully on attempt {attempt}")
+                return plan
+
+            except (json.JSONDecodeError, ValueError) as e:
+                last_error = e
+                logger.warning(f"[PLAN] Attempt {attempt} failed to parse JSON: {e}")
+                await asyncio.sleep(2)
+
+        # All retries failed — return a minimal fallback plan so the pipeline continues
+        logger.error(f"[PLAN] All retries failed. Using fallback plan. Last error: {last_error}")
+        app_slug = re.sub(r"[^\w]", "_", description[:30].lower()).strip("_") or "legion_app"
+        return {
+            "app_name": app_slug,
+            "app_display_name": description[:40],
+            "features": [
+                {
+                    "name": "core",
+                    "description": description,
+                    "entities": ["Item"],
+                    "use_cases": ["GetItems"],
+                    "screens": ["HomeScreen"]
+                }
+            ],
+            "global_theme": {"primary_color": "#6200EE", "style": "Material3"},
+            "navigation_routes": ["/home"],
+            "brand_assets": brand_assets
+        }
 
     def _format_dag_summary(self, tasks: list, plan: dict) -> str:
         total = len(tasks)
