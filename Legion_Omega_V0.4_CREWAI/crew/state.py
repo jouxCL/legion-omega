@@ -5,10 +5,28 @@ CommsAgent reads to narrate progress to the user.
 """
 from __future__ import annotations
 from datetime import datetime
-from typing import Any, Literal, Optional
-from pydantic import BaseModel, Field
+from typing import Any, Literal, Optional, Union
+from pydantic import BaseModel, Field, field_validator
 
 Phase = Literal["idle", "init", "plan", "build", "compile", "fix", "finalize", "done", "failed"]
+
+
+def _to_name_list(value: Any) -> list[str]:
+    """Coerce a list that may contain strings or dicts with 'name' into list[str].
+
+    Gemini planner tends to return richer dicts like {name, properties} — accept them.
+    """
+    if value is None:
+        return []
+    out: list[str] = []
+    for item in value:
+        if isinstance(item, str):
+            out.append(item)
+        elif isinstance(item, dict):
+            out.append(str(item.get("name") or item.get("id") or next(iter(item.values()), "item")))
+        else:
+            out.append(str(item))
+    return out
 
 
 class PhaseEvent(BaseModel):
@@ -21,10 +39,15 @@ class PhaseEvent(BaseModel):
 
 class FeaturePlan(BaseModel):
     name: str
-    description: str
+    description: str = ""
     entities: list[str] = Field(default_factory=list)
     use_cases: list[str] = Field(default_factory=list)
     screens: list[str] = Field(default_factory=list)
+
+    @field_validator("entities", "use_cases", "screens", mode="before")
+    @classmethod
+    def _coerce_strings(cls, v):
+        return _to_name_list(v)
 
 
 class ProjectPlan(BaseModel):

@@ -23,18 +23,18 @@ ROLE_MODEL: dict[str, str] = {
     "planner":       "gemini-2.5-pro",
     "logic":         "deepseek-chat",
     "ui":            "mistral-small",
-    "compiler_ops":  "gemini-2.0-flash",
+    "compiler_ops":  "gemini-2.5-flash",
     "fixer":         "deepseek-chat",
-    "comms":         "gemini-2.0-flash",
+    "comms":         "gemini-2.5-flash",
 }
 
 ROLE_LITELLM_MODEL: dict[str, str] = {
     "planner":       "gemini/gemini-2.5-pro",
     "logic":         "deepseek/deepseek-chat",
     "ui":            "mistral/mistral-small-latest",
-    "compiler_ops":  "gemini/gemini-2.0-flash",
+    "compiler_ops":  "gemini/gemini-2.5-flash",
     "fixer":         "deepseek/deepseek-chat",
-    "comms":         "gemini/gemini-2.0-flash",
+    "comms":         "gemini/gemini-2.5-flash",
 }
 
 

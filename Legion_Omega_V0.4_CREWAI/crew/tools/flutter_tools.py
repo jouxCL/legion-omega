@@ -16,16 +16,19 @@ from flutter_builder.file_writer import FileWriter
 
 
 def _run(coro):
-    """Execute a coroutine from a sync @tool callback."""
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(coro)
-    if loop.is_running():
-        import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-            return ex.submit(asyncio.run, coro).result()
-    return loop.run_until_complete(coro)
+    """Execute a coroutine from a sync @tool callback (CrewAI worker thread).
+
+    CrewAI tools run in ThreadPoolExecutor threads — there is no running event
+    loop. We use run_coroutine_threadsafe against the main loop stored in
+    Runtime, which guarantees thread-safe scheduling without creating a new loop.
+    """
+    from crew.runtime import get_runtime
+    rt = get_runtime()
+    if rt.main_loop and not rt.main_loop.is_closed():
+        future = asyncio.run_coroutine_threadsafe(coro, rt.main_loop)
+        return future.result(timeout=300)
+    # Fallback for tests / CLI runs without a running loop
+    return asyncio.run(coro)
 
 
 @tool("init_flutter_project")

@@ -1,6 +1,11 @@
 """Thin Telegram bot: every message is routed to the CommsAgent.
 
 No hand-written state machine — the LLM decides what tool to call.
+
+Lifecycle (python-telegram-bot 21+):
+  post_init  → loop already running, NO messages yet → wire main_loop + notify here
+  start()    → polling begins, messages can arrive
+  post_start → tasks that need the app fully started (narrator loop)
 """
 from __future__ import annotations
 import asyncio
@@ -51,7 +56,12 @@ def build_application() -> Application:
 
 
 async def _post_init(app: Application) -> None:
+    """Called BEFORE polling starts — safe place to wire the main_loop and notify."""
     settings = get_settings()
+    runtime = get_runtime()
+
+    # Store the running loop NOW, before any message can arrive.
+    runtime.main_loop = asyncio.get_running_loop()
 
     async def _send(msg: str) -> None:
         try:
@@ -59,12 +69,19 @@ async def _post_init(app: Application) -> None:
         except Exception:
             logger.exception("send_message failed")
 
-    get_runtime().notify = _send
-    app.create_task(event_narrator_loop(_send))
+    runtime.notify = _send
+    logger.info("Runtime wired: main_loop set, notify ready")
+
+
+async def _post_start(app: Application) -> None:
+    """Called AFTER polling starts — safe to create long-running asyncio tasks."""
+    asyncio.create_task(event_narrator_loop(get_runtime().notify))
+    logger.info("Event narrator loop started")
 
 
 def run_bot() -> None:
     app = build_application()
     app.post_init = _post_init
+    app.post_start = _post_start
     logger.info("Starting Telegram bot (V0.4 CREWAI)…")
     app.run_polling(allowed_updates=Update.ALL_TYPES)

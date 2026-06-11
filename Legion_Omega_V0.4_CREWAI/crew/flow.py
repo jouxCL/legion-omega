@@ -157,7 +157,7 @@ class LegionOmegaFlow(Flow[ProjectState]):
         get_runtime().publish_event({"phase": "failed"})
 
     @listen("finalize")
-    def finalize(self) -> None:
+    def finalize_project(self) -> None:
         self.state.phase = "done"
         self.state.log("done", "Proyecto completado", level="success",
                        path=self.state.project_path)

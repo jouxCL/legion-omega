@@ -24,10 +24,19 @@ class Runtime:
     flow: Optional["LegionOmegaFlow"] = None
     notify: Optional[NotifyFn] = None
     event_queue: asyncio.Queue = field(default_factory=asyncio.Queue)
+    # Main event loop stored by the Telegram bot at startup so tools
+    # running in CrewAI worker threads can schedule coroutines safely.
+    main_loop: Optional[asyncio.AbstractEventLoop] = None
 
     @property
     def state(self) -> Optional["ProjectState"]:
         return self.flow.state if self.flow is not None else None
+
+    def schedule(self, coro) -> None:
+        """Schedule a coroutine on the main event loop from any thread."""
+        if self.main_loop is None or self.main_loop.is_closed():
+            raise RuntimeError("main_loop not set — bot not started yet")
+        asyncio.run_coroutine_threadsafe(coro, self.main_loop)
 
     def publish_event(self, evt: dict) -> None:
         try:
