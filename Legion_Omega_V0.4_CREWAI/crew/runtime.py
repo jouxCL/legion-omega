@@ -34,9 +34,14 @@ class Runtime:
 
     def schedule(self, coro) -> None:
         """Schedule a coroutine on the main event loop from any thread."""
-        if self.main_loop is None or self.main_loop.is_closed():
-            raise RuntimeError("main_loop not set — bot not started yet")
-        asyncio.run_coroutine_threadsafe(coro, self.main_loop)
+        if self.main_loop and not self.main_loop.is_closed():
+            asyncio.run_coroutine_threadsafe(coro, self.main_loop)
+        else:
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(coro)
+            except RuntimeError:
+                asyncio.run(coro)
 
     def publish_event(self, evt: dict) -> None:
         try:
