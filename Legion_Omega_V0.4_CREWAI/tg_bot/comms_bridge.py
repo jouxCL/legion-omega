@@ -34,7 +34,7 @@ async def handle_user_message(chat_id: int, text: str) -> str:
     task = comms_task(comms)
     crew = Crew(agents=[comms], tasks=[task], process=Process.sequential, verbose=False)
     try:
-        status_raw = get_project_status.run({})  # type: ignore[attr-defined]
+        status_raw = get_project_status.func() if hasattr(get_project_status, "func") else get_project_status()
     except Exception:
         status_raw = "{}"
     try:
@@ -54,19 +54,23 @@ async def handle_user_message(chat_id: int, text: str) -> str:
 async def event_narrator_loop(send_to_user):
     """Consume runtime.event_queue, let CommsAgent narrate each event, deliver via send_to_user."""
     runtime = get_runtime()
+    phase_messages = {
+        "init": "🚀 *Iniciando proyecto:* {app_name}",
+        "plan": "📋 *Fase de planificación:* Generando arquitectura y features…",
+        "build": "🛠️ *Fase de construcción:* Generando código Flutter…",
+        "compile": "⚙️ *Compilando proyecto...* (Intento {attempt})",
+        "fix": "🔧 *Corrigiendo errores de compilación...*",
+        "done": "✅ *¡Proyecto completado con éxito!* Ubicación: {path}",
+        "failed": "❌ *El proyecto ha fallado o se detuvo.*",
+    }
     while True:
         evt = await runtime.event_queue.get()
         try:
-            comms = build_comms()
-            task = comms_task(comms)
-            crew = Crew(agents=[comms], tasks=[task], process=Process.sequential, verbose=False)
-            result = await crew.kickoff_async(inputs={
-                "user_message": f"[EVENTO_INTERNO] Informa al usuario sobre: {json.dumps(evt, ensure_ascii=False)}",
-                "history": "[]",
-                "status": "{}",
-            })
-            msg = str(result.raw).strip()
-            if msg:
-                await send_to_user(msg)
+            phase = evt.get("phase")
+            if phase in phase_messages:
+                fmt_msg = phase_messages[phase].format(**evt)
+                await send_to_user(fmt_msg)
+            else:
+                await send_to_user(f"📢 Evento: {evt}")
         except Exception:
             logger.exception("Event narration failed")
