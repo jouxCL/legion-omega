@@ -42,10 +42,17 @@ class OrchestratorAgent:
         genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
         with open(SYSTEM_PROMPT_PATH, "r", encoding="utf-8") as f:
             system_prompt = f.read()
-        self.model = genai.GenerativeModel(
-            model_name=self.MODEL,
-            system_instruction=system_prompt
-        )
+        try:
+            self.model = genai.GenerativeModel(
+                model_name=self.MODEL,
+                system_instruction=system_prompt
+            )
+        except Exception as e:
+            logger.warning(f"Failed to load {self.MODEL}, falling back to gemini-1.5-pro: {e}")
+            self.model = genai.GenerativeModel(
+                model_name="gemini-1.5-pro",
+                system_instruction=system_prompt
+            )
 
     # ─────────────────────────────────────────────
     # PUBLIC: Start a new project
@@ -180,14 +187,15 @@ REGLAS: Responde SOLO con el JSON. Sin markdown. Sin texto antes o despues. Sin 
                         temperature=0.2
                     )
                 )
-                usage = response.usage_metadata
-                self.memory.log_token_usage(
-                    "orchestrator",
-                    usage.prompt_token_count,
-                    usage.candidates_token_count
-                )
+                if hasattr(response, 'usage_metadata') and response.usage_metadata:
+                    usage = response.usage_metadata
+                    self.memory.log_token_usage(
+                        "orchestrator",
+                        usage.prompt_token_count,
+                        usage.candidates_token_count
+                    )
 
-                text = response.text.strip()
+                text = response.text.strip() if (hasattr(response, 'text') and response.text) else ""
                 # Strip markdown code fences if present
                 if "```" in text:
                     text = text.split("```", 2)[1]
