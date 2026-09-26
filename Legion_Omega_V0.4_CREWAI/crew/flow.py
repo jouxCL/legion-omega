@@ -11,7 +11,7 @@ import logging
 import re
 from typing import Any, Optional
 from crewai import Crew, Process
-from crewai.flow.flow import Flow, start, listen, router
+from crewai.flow.flow import Flow, start, listen, router, or_
 
 from crew.state import ProjectState, ProjectPlan
 from crew.agents import (
@@ -105,7 +105,7 @@ class LegionOmegaFlow(Flow[ProjectState]):
         except Exception as e:
             self.state.log("build", f"Feature '{feature_name}' falló: {e}", level="error")
 
-    @listen(build_project)
+    @listen(or_(build_project, "fix_errors"))
     async def compile_project(self) -> None:
         if self.state.phase == "failed":
             return
@@ -127,8 +127,10 @@ class LegionOmegaFlow(Flow[ProjectState]):
             self.state.last_errors = []
         else:
             errs = data.get("errors", []) or []
-            self.state.last_errors = [e.get("message", str(e)) if isinstance(e, dict) else str(e)
-                                      for e in errs][:20]
+            self.state.last_errors = [
+                (e.get("message") if isinstance(e, dict) and e.get("message") else str(e))
+                for e in errs
+            ][:20]
             self.state.log("compile", f"Errores: {len(self.state.last_errors)}", level="warn")
 
     @router(compile_project)
@@ -147,8 +149,6 @@ class LegionOmegaFlow(Flow[ProjectState]):
         fixer = build_fixer()
         crew = Crew(agents=[fixer], tasks=[fix_task(fixer)], process=Process.sequential, verbose=True)
         await crew.kickoff_async(inputs={"errors": "\n".join(self.state.last_errors)})
-        # Loop back into compile
-        await self.compile_project()
 
     @listen("give_up")
     def mark_failed(self) -> None:

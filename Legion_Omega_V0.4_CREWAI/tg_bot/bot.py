@@ -17,7 +17,7 @@ from telegram.ext import (
 )
 from config.settings import get_settings
 from crew.runtime import get_runtime
-from tg_bot.comms_bridge import handle_user_message, event_narrator_loop
+from .comms_bridge import handle_user_message, event_narrator_loop
 
 logger = logging.getLogger(__name__)
 

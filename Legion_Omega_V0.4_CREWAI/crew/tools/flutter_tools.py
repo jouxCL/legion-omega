@@ -27,6 +27,17 @@ def _run(coro):
     if rt.main_loop and not rt.main_loop.is_closed():
         future = asyncio.run_coroutine_threadsafe(coro, rt.main_loop)
         return future.result(timeout=300)
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(asyncio.run, coro).result(timeout=300)
+
     # Fallback for tests / CLI runs without a running loop
     return asyncio.run(coro)
 
@@ -64,8 +75,12 @@ def write_dart_file(relative_path: str, content: str) -> str:
     if runtime.state is None or not runtime.state.project_path:
         return json.dumps({"success": False, "error": "No active project"})
     try:
+        clean_path = relative_path.lstrip("/\\")
+        if not clean_path.startswith("lib/") and not clean_path.startswith("lib\\"):
+            clean_path = os.path.join("lib", clean_path)
+
         writer = FileWriter(runtime.state.project_path, runtime.memory)
-        abs_path = writer.write_dart_file(relative_path, content)
+        abs_path = writer.write_dart_file(clean_path, content)
         return json.dumps({"success": True, "path": abs_path})
     except Exception as e:
         return json.dumps({"success": False, "error": str(e)})

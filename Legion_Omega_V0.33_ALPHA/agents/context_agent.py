@@ -36,23 +36,30 @@ class ContextAgent:
         if len(payload_str) > self.MAX_INPUT_TOKENS * 3:
             payload_str = payload_str[:self.MAX_INPUT_TOKENS * 3]
 
-        response = await asyncio.to_thread(
-            self.model.generate_content,
-            payload_str,
-            generation_config=genai.types.GenerationConfig(
-                max_output_tokens=self.MAX_OUTPUT_TOKENS,
-                temperature=0.7
+        try:
+            response = await asyncio.to_thread(
+                self.model.generate_content,
+                payload_str,
+                generation_config=genai.types.GenerationConfig(
+                    max_output_tokens=self.MAX_OUTPUT_TOKENS,
+                    temperature=0.7
+                )
             )
-        )
 
-        usage = response.usage_metadata
-        self.memory.log_token_usage(
-            "context_agent",
-            usage.prompt_token_count,
-            usage.candidates_token_count
-        )
+            if hasattr(response, 'usage_metadata') and response.usage_metadata:
+                usage = response.usage_metadata
+                self.memory.log_token_usage(
+                    "context_agent",
+                    usage.prompt_token_count,
+                    usage.candidates_token_count
+                )
 
-        return response.text.strip()
+            if hasattr(response, 'text') and response.text:
+                return response.text.strip()
+            return f"Estado actualizado: {event}"
+        except Exception as e:
+            logger.error(f"[ContextAgent] Error generating status message: {e}")
+            return f"Evento: {event}"
 
     async def handle_user_message(self, message: str, project_state: dict) -> str:
         """Handle free-form user message in Telegram conversation."""
@@ -63,14 +70,21 @@ class ContextAgent:
             "project_name": project_state.get("project", {}).get("name", ""),
             "budget_remaining": project_state.get("project", {}).get("budget_remaining_usd", 0.0)
         }
-        response = await asyncio.to_thread(
-            self.model.generate_content,
-            json.dumps(context, ensure_ascii=False),
-            generation_config=genai.types.GenerationConfig(
-                max_output_tokens=self.MAX_OUTPUT_TOKENS,
-                temperature=0.8
+        try:
+            response = await asyncio.to_thread(
+                self.model.generate_content,
+                json.dumps(context, ensure_ascii=False),
+                generation_config=genai.types.GenerationConfig(
+                    max_output_tokens=self.MAX_OUTPUT_TOKENS,
+                    temperature=0.8
+                )
             )
-        )
-        usage = response.usage_metadata
-        self.memory.log_token_usage("context_agent", usage.prompt_token_count, usage.candidates_token_count)
-        return response.text.strip()
+            if hasattr(response, 'usage_metadata') and response.usage_metadata:
+                usage = response.usage_metadata
+                self.memory.log_token_usage("context_agent", usage.prompt_token_count, usage.candidates_token_count)
+            if hasattr(response, 'text') and response.text:
+                return response.text.strip()
+            return "No pude generar una respuesta clara."
+        except Exception as e:
+            logger.error(f"[ContextAgent] Error handling user message: {e}")
+            return f"Ocurrió un error al procesar tu mensaje: {e}"
